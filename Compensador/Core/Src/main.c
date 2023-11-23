@@ -21,7 +21,6 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,12 +44,12 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 typedef union
 {
-  float rxBuffer;
-  char  rxBuffer_c[sizeof(float)];
+  float rxInput;
+  char  rxInputChar[sizeof(float)];
 } unionRx_t; //Fin de union
-unionRx_t rxUnion;
+unionRx_t rxDataUnion;
 
-float filterOutput; //salida
+float Y; //salida
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,6 +97,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UART_Receive_IT(&huart2, (uint8_t*)&rxDataUnion,sizeof(rxDataUnion));
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -107,7 +107,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_UART_Receive_IT(&huart2, (uint8_t*)&rxUnion,sizeof(rxUnion));
   }
   /* USER CODE END 3 */
 }
@@ -225,46 +224,31 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void filtro(float x)
 {
-    // Inicializacion
-	float H = 0;
+	float H;
+	static float ht1 = 0; // Variable con el valor anterior de H
 
 	// Coeficientes del compensador
-
-	const float A = 0.9885;
-	const float B = 401.9222;
-	const float C = 405.9;
-
-
-	static float ht1;
-    // Update input buffer
+	const float A = 0.9977;
+	const float B = 405.4;
+	const float C = 406.2;
 
 	H = x + A * ht1;
 
-    filterOutput = C * H - B * ht1;
+    Y = C * H - B * ht1;	// Cálculo del valor de salida
 
-    ht1 = H;
+    ht1 = H;				// Se guarda H en memoria
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART2)
     {
-        filtro(rxUnion.rxBuffer);
+        filtro(rxDataUnion.rxInput);							// Función que calcula el valor siguiente del compensador
 
-        //uint8_t txBuffer[sizeof(filterOutput)]; // Create a buffer for transmitting float data
-        //memcpy(txBuffer, &filterOutput, sizeof(filterOutput)); // Copy float data to the buffer
-
-        HAL_UART_Transmit_IT(&huart2, &filterOutput, sizeof(filterOutput)); // Transmit buffer
+        HAL_UART_Transmit_IT(&huart2, (uint8_t*)&Y, sizeof(Y));	// Se envía el resultado del filtro por UART
+		HAL_UART_Receive_IT(&huart2, (uint8_t*)&rxDataUnion,sizeof(rxDataUnion));	// Recibimos los datos enviados por simulink
     }
 }
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if (huart->Instance == USART2)
-	{
-		HAL_UART_Receive_IT(&huart2, (uint8_t*)&rxUnion,sizeof(rxUnion));
-	}
-}
-
 /* USER CODE END 4 */
 
 /**
